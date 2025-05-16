@@ -1,7 +1,20 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 
 from posts.models import Post, Group, Comment, Follow, User
+
+
+class UserSlugField(serializers.SlugRelatedField):
+    """
+    Расширенный SlugRelatedField, который превращает 500-ю ошибку
+    (ObjectDoesNotExist) в 400 с понятным сообщением.
+    """
+    def to_internal_value(self, data):
+        try:
+            return super().to_internal_value(data)
+        except ObjectDoesNotExist:
+            raise serializers.ValidationError('Пользователь не существует')
 
 
 class PostSerializer(serializers.ModelSerializer):
@@ -26,32 +39,41 @@ class CommentSerializer(serializers.ModelSerializer):
         slug_field='username',
         read_only=True,
     )
+    post = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Comment
-        fields = '__all__'
-        read_only_fields = ['post']
+        fields = ('id', 'author', 'post', 'text', 'created')
+        read_only_fields = ('id', 'author', 'post', 'created')
 
 
 class FollowSerializer(serializers.ModelSerializer):
-    user = serializers.SlugRelatedField(
+    user = UserSlugField(
         slug_field='username',
-        read_only=True,
-        default=serializers.CurrentUserDefault())
-    following = serializers.SlugRelatedField(
-        slug_field='username', queryset=User.objects.all())
+        queryset=User.objects.all(),
+        default=serializers.CurrentUserDefault()
+    )
+    following = UserSlugField(
+        slug_field='username',
+        queryset=User.objects.all()
+    )
 
     class Meta:
         model = Follow
         fields = '__all__'
         validators = [
             UniqueTogetherValidator(
-                queryset=Follow.objects.all(), fields=('following', 'user'),
-                message='Вы уже подписаны!')
+                queryset=Follow.objects.all(),
+                fields=('user', 'following'),
+                message='Вы уже подписаны!'
+            )
         ]
 
     def validate_following(self, value):
         if self.context['request'].user == value:
-            raise serializers.ValidationError('Невозможно оформить подписку'
-                                              'на самого себя.')
+            raise serializers.ValidationError(
+                'Невозможно оформить подписку на самого себя.'
+            )
+        if not User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Пользователь не найден")
         return value

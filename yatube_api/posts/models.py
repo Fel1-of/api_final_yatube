@@ -6,7 +6,7 @@ User = get_user_model()
 
 class Follow(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE,
-                             related_name='follower')
+                             related_name='follows')
     following = models.ForeignKey(User,
                                   on_delete=models.CASCADE,
                                   related_name='following')
@@ -39,6 +39,9 @@ class Post(models.Model):
         Group, on_delete=models.SET_NULL,
         related_name='posts', blank=True, null=True
     )
+
+    class Meta:
+        ordering = ['-pub_date']
 
     def __str__(self):
         return self.text
